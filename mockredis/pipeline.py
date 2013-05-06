@@ -12,17 +12,23 @@ class MockRedisPipeline(MockRedis):
         """Initialize the object."""
         self.redis = redis
         self.timeouts = timeouts
+        self.buffered_results = []
 
     def execute(self):
         """
-        Emulate the execute method. All piped
-        commands are executed immediately
-        in this mock, so this is a no-op.
-        """
-        pass
+        Emulate the execute method. Return the 
+        buffered results and clear the instance copy.
+        """ 
+        rval = self.buffered_results
+        self.buffered_results = []
+        return rval
+
+    def _buffer_results(self, val):
+        self.buffered_results.append(val)
+        return None
 
     def __exit__(self, *argv, **kwargs):
-        pass
+        self.buffered_results = []
 
     def __enter__(self, *argv, **kwargs):
         return self

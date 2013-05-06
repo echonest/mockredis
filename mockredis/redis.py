@@ -6,6 +6,13 @@ from mockredis.lock import MockRedisLock
 from mockredis.sortedset import SortedSet
 
 
+def buffer(f):
+    def wrapper(self, *args, **kwargs):
+        results = f(self, *args, **kwargs)
+        return self._buffer_results(results)
+    return wrapper
+
+
 class MockRedis(object):
     """
     A Mock for a redis-py Redis object
@@ -28,6 +35,14 @@ class MockRedis(object):
         Defaults to non-strict.
         """
         self.strict = strict
+
+    #### Buffer Functions ####
+
+    def _buffer_results(self, val):
+        """
+        Pass-through for regular MockRedis object
+        """
+        return val
 
     #### Connection Functions ####
 
@@ -89,6 +104,7 @@ class MockRedis(object):
             return 'zset'
         raise TypeError("unhandled type {}".format(type_))
 
+    @buffer
     def keys(self, pattern):
         """Emulate keys."""
         import re
@@ -101,16 +117,19 @@ class MockRedis(object):
 
         return result
 
+    @buffer
     def delete(self, key):
         """Emulate delete."""
         if key in self.redis:
             del self.redis[key]
 
+    @buffer
     def exists(self, key):
         """Emulate exists."""
 
         return key in self.redis
 
+    @buffer
     def expire(self, key, seconds, currenttime=datetime.now()):
         """Emulate expire"""
 
@@ -119,6 +138,7 @@ class MockRedis(object):
             return 1
         return 0
 
+    @buffer
     def ttl(self, key, currenttime=datetime.now()):
         """
         Emulate ttl
@@ -128,6 +148,7 @@ class MockRedis(object):
         self.do_expire(currenttime)
         return -1 if key not in self.timeouts else self._get_total_seconds(self.timeouts[key] - currenttime)
 
+    @buffer
     def do_expire(self, currenttime=datetime.now()):
         """
         Expire objects assuming now == time
@@ -135,24 +156,27 @@ class MockRedis(object):
         for key, value in self.timeouts.items():
             if value - currenttime < timedelta(0):
                 del self.timeouts[key]
-
+    @buffer
     def flushdb(self):
         self.redis.clear()
         self.timeouts.clear()
 
     #### String Functions ####
 
+    @buffer
     def get(self, key):
 
         # Override the default dict
         result = None if key not in self.redis else self.redis[key]
         return result
 
+    @buffer
     def set(self, key, value):
 
         self.redis[key] = str(value)
         return True
 
+    @buffer
     def decr(self, key, decrement=1):
         """Emulate decr."""
 
@@ -160,6 +184,7 @@ class MockRedis(object):
         self.redis[key] = str(previous_value - decrement)
         return long(self.redis[key])
 
+    @buffer
     def incr(self, key, increment=1):
 
         previous_value = long(self.redis.get(key, '0'))
@@ -168,11 +193,13 @@ class MockRedis(object):
 
     #### Hash Functions ####
 
+    @buffer
     def hexists(self, hashkey, attribute):
         """Emulate hexists."""
 
         return attribute in self.redis[hashkey]
 
+    @buffer
     def hget(self, hashkey, attribute):
         """Emulate hget."""
 
@@ -181,22 +208,26 @@ class MockRedis(object):
             else None
         return result
 
+    @buffer
     def hgetall(self, hashkey):
         """Emulate hgetall."""
 
         return self.redis[hashkey]
 
+    @buffer
     def hdel(self, hashkey, *keys):
         """Emulate hdel"""
 
         deleted = map(self.redis[hashkey].pop, keys)
         return len(deleted)
 
+    @buffer
     def hlen(self, hashkey):
         """Emulate hlen."""
 
         return len(self.redis[hashkey])
 
+    @buffer
     def hmset(self, hashkey, value):
         """Emulate hmset."""
 
@@ -204,6 +235,7 @@ class MockRedis(object):
         for attributekey, attributevalue in value.items():
             self.redis[hashkey][attributekey] = str(attributevalue)
 
+    @buffer
     def hset(self, key, attribute, value):
         """Emulate hset."""
 
@@ -215,6 +247,7 @@ class MockRedis(object):
 
         self.redis[key][attribute] = str(value)
 
+    @buffer
     def hincrby(self, key, attribute, increment=1):
 
         # inititalize hset and value if required
@@ -227,6 +260,7 @@ class MockRedis(object):
 
     #### List Functions ####
 
+    @buffer
     def lrange(self, key, start, stop):
         """Emulate lrange."""
 
@@ -238,6 +272,7 @@ class MockRedis(object):
             # No, override the defaultdict's default and create the list
             self.redis[key] = list([])
 
+    @buffer
     def lindex(self, key, index):
         """Emulate lindex."""
 
@@ -249,6 +284,7 @@ class MockRedis(object):
             # Redis returns nil if the index doesn't exist
             pass
 
+    @buffer
     def llen(self, key):
         """Emulate llen."""
         redis_list = self._get_list(key, 'LLEN')
@@ -256,6 +292,7 @@ class MockRedis(object):
         # Redis returns 0 if list doesn't exist
         return len(redis_list)
 
+    @buffer
     def lpop(self, key):
         """Emulate lpop."""
         redis_list = self._get_list(key, 'LPOP')
@@ -267,6 +304,7 @@ class MockRedis(object):
                 # Redis returns nil if popping from an empty list
                 pass
 
+    @buffer
     def lpush(self, key, *args):
         """Emulate lpush."""
         redis_list = self._get_list(key, 'LPUSH', create=True)
@@ -276,6 +314,7 @@ class MockRedis(object):
         args_reversed.reverse()
         self.redis[key] = args_reversed + redis_list
 
+    @buffer
     def rpop(self, key):
         """Emulate lpop."""
         redis_list = self._get_list(key, 'RPOP')
@@ -287,6 +326,7 @@ class MockRedis(object):
                 # Redis returns nil if popping from an empty list
                 pass
 
+    @buffer
     def rpush(self, key, *args):
         """Emulate rpush."""
         redis_list = self._get_list(key, 'RPUSH', create=True)
@@ -294,6 +334,7 @@ class MockRedis(object):
         # Creates the list at this key if it doesn't exist, and appends args to it
         redis_list.extend(map(str, args))
 
+    @buffer
     def lrem(self, key, count, value):
         """Emulate lrem."""
         redis_list = self._get_list(key, 'LREM')
@@ -324,6 +365,7 @@ class MockRedis(object):
 
     #### SET COMMANDS ####
 
+    @buffer
     def sadd(self, key, *values):
         """Emulate sadd."""
         redis_set = self._get_set(key, 'SADD', create=True)
@@ -332,33 +374,39 @@ class MockRedis(object):
         after_count = len(redis_set)
         return after_count - before_count
 
+    @buffer
     def scard(self, key):
         """Emulate scard."""
         redis_set = self._get_set(key, 'SADD')
         return len(redis_set)
 
+    @buffer
     def sdiff(self, keys, *args):
         """Emulate sdiff."""
         func = lambda left, right: left.difference(right)
         return self._apply_to_sets(func, "SDIFF", keys, *args)
 
+    @buffer
     def sdiffstore(self, dest, keys, *args):
         """Emulate sdiffstore."""
         result = self.sdiff(keys, *args)
         self.redis[dest] = result
         return len(result)
 
+    @buffer
     def sinter(self, keys, *args):
         """Emulate sinter."""
         func = lambda left, right: left.intersection(right)
         return self._apply_to_sets(func, "SINTER", keys, *args)
 
+    @buffer
     def sinterstore(self, dest, keys, *args):
         """Emulate sinterstore."""
         result = self.sinter(keys, *args)
         self.redis[dest] = result
         return len(result)
 
+    @buffer
     def sismember(self, name, value):
         """Emulate sismember."""
         redis_set = self._get_set(name, 'SISMEMBER')
@@ -366,11 +414,13 @@ class MockRedis(object):
             return 0
         return 1 if value in redis_set else 0
 
+    @buffer
     def smembers(self, name):
         """Emulate smembers."""
         redis_set = self._get_set(name, 'SMEMBERS')
         return redis_set or set()
 
+    @buffer
     def smove(self, src, dst, value):
         """Emulate smove."""
         src_set = self._get_set(src, 'SMOVE')
@@ -384,6 +434,7 @@ class MockRedis(object):
         self.redis[src], self.redis[dst] = src_set, dst_set
         return 1
 
+    @buffer
     def spop(self, name):
         """Emulate spop."""
         redis_set = self._get_set(name, 'SPOP')
@@ -393,6 +444,7 @@ class MockRedis(object):
         redis_set.remove(member)
         return member
 
+    @buffer
     def srandmember(self, name, number=None):
         """Emulate srandmember."""
         redis_set = self._get_set(name, 'SRANDMEMBER')
@@ -405,6 +457,7 @@ class MockRedis(object):
         else:
             return [choice(list(redis_set)) for _ in xrange(abs(number))]
 
+    @buffer
     def srem(self, key, *values):
         """Emulate srem."""
         redis_set = self._get_set(key, 'SREM')
@@ -416,11 +469,13 @@ class MockRedis(object):
         after_count = len(redis_set)
         return before_count - after_count
 
+    @buffer
     def sunion(self, keys, *args):
         """Emulate sunion."""
         func = lambda left, right: left.union(right)
         return self._apply_to_sets(func, "SUNION", keys, *args)
 
+    @buffer
     def sunionstore(self, dest, keys, *args):
         """Emulate sunionstore."""
         result = self.sunion(keys, *args)
@@ -429,6 +484,7 @@ class MockRedis(object):
 
     #### SORTED SET COMMANDS ####
 
+    @buffer
     def zadd(self, name, *args, **kwargs):
         zset = self._get_zset(name, "ZADD", create=True)
 
@@ -451,11 +507,13 @@ class MockRedis(object):
         insert_count = lambda member, score: 1 if zset.insert(str(member), float(score)) else 0
         return sum((insert_count(member, score) for member, score in pieces))
 
+    @buffer
     def zcard(self, name):
         zset = self._get_zset(name, "ZCARD")
 
         return len(zset) if zset is not None else 0
 
+    @buffer
     def zcount(self, name, min_, max_):
         zset = self._get_zset(name, "ZCOUNT")
 
@@ -464,6 +522,7 @@ class MockRedis(object):
 
         return len(zset.scorerange(float(min_), float(max_)))
 
+    @buffer
     def zincrby(self, name, value, amount=1):
         zset = self._get_zset(name, "ZINCRBY", create=True)
 
@@ -473,6 +532,7 @@ class MockRedis(object):
         zset[value] = score
         return score
 
+    @buffer
     def zinterstore(self, dest, keys, aggregate=None):
         aggregate_func = self._aggregate_func(aggregate)
 
@@ -496,6 +556,7 @@ class MockRedis(object):
         self.redis[dest] = intersection
         return len(intersection)
 
+    @buffer
     def zrange(self, name, start, end, desc=False, withscores=False,
                score_cast_func=float):
         zset = self._get_zset(name, "ZRANGE")
@@ -510,6 +571,7 @@ class MockRedis(object):
         func = self._range_func(withscores, score_cast_func)
         return [func(item) for item in zset.range(start, end, desc)]
 
+    @buffer
     def zrangebyscore(self, name, min_, max_, start=None, num=None,
                       withscores=False, score_cast_func=float):
         if (start is None) ^ (num is None):
@@ -528,11 +590,13 @@ class MockRedis(object):
             scorerange = scorerange[start:start + num]
         return [func(item) for item in scorerange]
 
+    @buffer
     def zrank(self, name, value):
         zset = self._get_zset(name, "ZRANK")
 
         return zset.rank(value) if zset else None
 
+    @buffer
     def zrem(self, name, *values):
         zset = self._get_zset(name, "ZREM")
 
@@ -542,6 +606,7 @@ class MockRedis(object):
         remove_count = lambda value: 1 if zset.remove(value) else 0
         return sum((remove_count(value) for value in values))
 
+    @buffer
     def zremrangebyrank(self, name, start, end):
         zset = self._get_zset(name, "ZREMRANGEBYRANK")
 
@@ -552,6 +617,7 @@ class MockRedis(object):
         remove_count = lambda score, member: 1 if zset.remove(member) else 0
         return sum((remove_count(score, member) for score, member in zset.range(start, end)))
 
+    @buffer
     def zremrangebyscore(self, name, min_, max_):
         zset = self._get_zset(name, "ZREMRANGEBYSCORE")
 
@@ -562,11 +628,13 @@ class MockRedis(object):
         return sum((remove_count(score, member)
                     for score, member in zset.scorerange(float(min_), float(max_))))
 
+    @buffer
     def zrevrange(self, name, start, end, withscores=False,
                   score_cast_func=float):
         return self.zrange(name, start, end,
                            desc=True, withscores=withscores, score_cast_func=score_cast_func)
 
+    @buffer
     def zrevrangebyscore(self, name, max_, min_, start=None, num=None,
                          withscores=False, score_cast_func=float):
         if (start is None) ^ (num is None):
@@ -584,6 +652,7 @@ class MockRedis(object):
             scorerange = scorerange[start:start + num]
         return [func(item) for item in scorerange]
 
+    @buffer
     def zrevrank(self, name, value):
         zset = self._get_zset(name, "ZREVRANK")
 
@@ -592,11 +661,13 @@ class MockRedis(object):
 
         return len(zset) - zset.rank(value) - 1
 
+    @buffer
     def zscore(self, name, value):
         zset = self._get_zset(name, "ZSCORE")
 
         return zset.score(value) if zset is not None else None
 
+    @buffer
     def zunionstore(self, dest, keys, aggregate=None):
         union = SortedSet()
         aggregate_func = self._aggregate_func(aggregate)
