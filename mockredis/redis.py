@@ -209,6 +209,11 @@ class MockRedis(object):
         return result
 
     @buffer
+    def hmget(self, hashkey, attributes):
+        """Emulate hmget"""
+        return [self.hget(hashkey, attribute) for attribute in attributes]
+
+    @buffer
     def hgetall(self, hashkey):
         """Emulate hgetall."""
 
